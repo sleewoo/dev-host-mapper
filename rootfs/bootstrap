@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+
+set -e
+
+rm -fr \
+  /etc/nginx-vhosts \
+;
+
+mkdir -p \
+  /etc/vhosts \
+  /etc/nginx-vhosts \
+;
+
+unset \
+  listen_address \
+  nginx_user_array \
+  nginx_user \
+  ERROR_PREFIX \
+  WARNING_PREFIX \
+;
+
+listen_address=${LISTEN_ADDRESS:-127.0.0.1}
+
+cat <<EOF > /etc/dnsmasq.conf
+listen-address=$listen_address
+interface=eth0
+EOF
+
+ERROR_PREFIX="\e[31mERROR\e[0m"
+WARNING_PREFIX="\e[91mWARNING\e[0m"
+
+nginx_user_array=(`grep -o "^user\s\+[^;]\+" /etc/nginx/nginx.conf`)
+[[ -n ${nginx_user_array[1]} ]] && nginx_user="${nginx_user_array[1]}" || nginx_user="nginx"
+
+for d in $(find /etc/vhosts -type d -maxdepth 1 -mindepth 1); do
+
+  unset \
+    hostname \
+    vhost_conf \
+    cert_file_array \
+    cert_file \
+  ;
+
+  hostname="${d##*/}"
+  vhost_conf="$d/vhost.conf"
+
+  echo
+  echo -e "[ \e[1;35m$hostname\e[0m ]"
+
+  [[ -f $vhost_conf ]] || {
+    echo -e "$WARNING_PREFIX: $vhost_conf missing, skipping setup..."
+    continue
+  }
+
+  echo "address=/$hostname/$listen_address" >> /etc/dnsmasq.conf
+
+  if [[ $nginx_user != root ]]; then
+    for k in \
+      ssl_certificate \
+      ssl_certificate_key \
+    ; do
+
+      cert_file_array=(`grep -o "^$k\s\+[^;]\+" $vhost_conf`) || true
+      cert_file="${cert_file_array[1]//\$host/$hostname}"
+
+      if [[ -n $cert_file ]]; then
+        su $nginx_user -s /bin/sh -c "cat $cert_file > /dev/null" || {
+          echo -e "$ERROR_PREFIX: make sure $k file exists and can be read by unprivileged users"
+          echo -e "$ERROR_PREFIX: $cert_file not readable by $nginx_user user"
+        }
+      fi
+
+    done
+  fi
+
+  for e in \
+    "server" \
+    "listen" \
+    "server_name" \
+  ; do
+    if grep -q "^[^#]\?$e\s\+" $vhost_conf; then
+      echo -e "$WARNING_PREFIX: $e directive detected in $vhost_conf"
+    fi
+  done
+
+  cat <<EOF > /etc/nginx-vhosts/$hostname.conf
+server {
+  listen $listen_address:80;
+  listen $listen_address:443 ssl;
+  server_name $hostname;
+  include $vhost_conf;
+}
+EOF
+
+  nginx -t || {
+    echo -e "$ERROR_PREFIX: $vhost_conf validation failed [ $d ]"
+  }
+
+done
+
+find /services -name run -exec chmod +x {} \;
+
+echo -e "\n[ \e[32mStarting Services...\e[0m ]"
+
+s6-svscan /services
+

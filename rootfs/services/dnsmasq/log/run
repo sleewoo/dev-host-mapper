@@ -1,0 +1,6 @@
+#!/bin/sh
+
+mkdir -p /var/log/dnsmasq
+# max 1MB file, max 100 total files
+exec s6-log -b s1048576 n100 T /var/log/dnsmasq
+

@@ -1,0 +1,19 @@
+
+version: "3.8"
+
+services:
+  dev-host-mapper:
+
+    build: .
+    image: dev-host-mapper
+    container_name: dev-host-mapper
+
+    network_mode: host
+    restart: always
+
+    environment:
+      LISTEN_ADDRESS: 127.0.0.1
+
+    volumes:
+      - ./nginx:/etc/nginx
+
