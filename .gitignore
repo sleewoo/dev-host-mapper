@@ -1,0 +1,6 @@
+/nginx/modules/*
+/nginx/conf.d/*
+/nginx/http.d/*
+/nginx/mime.types
+/docker-compose.yml
+

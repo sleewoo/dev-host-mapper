@@ -6,6 +6,7 @@ RUN apk update && apk upgrade && apk add --no-cache \
   nginx=~1.24 \
   s6=~2.11 \
   bash=~5.2 \
+  rsync \
 ;
 
 RUN rm -fr \
